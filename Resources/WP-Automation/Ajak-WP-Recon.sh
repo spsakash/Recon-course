@@ -5,51 +5,51 @@
 #   Author: Akash.P                      #
 #========================================#
 
-# Banner Function with Gradient
+# Banner Function
 banner() {
     echo
-    echo -e "\e[38;5;198m    ___     _   _     _              \e[38;5;199m ____          _                _            "
-    echo -e "\e[38;5;198m   / _ \   | | | |   | |            \e[38;5;199m/ ___|   _   _| |__   _   _  __| | ___  _ __ "
-    echo -e "\e[38;5;200m  | | | |  | |_| | __| | __ _  __ _ \e[38;5;201m\___ \  | | | | '_ \ | | | |/ _  |/ _ \| '__|"
-    echo -e "\e[38;5;200m  | |_| |  |  _  |/ _  |/ _  |/ _  | \e[38;5;201m___) | | |_| | |_) || |_| | (_| | (_) | |   "
-    echo -e "\e[38;5;202m   \___/   |_| |_|\__,_|\__, |\__,_| \e[38;5;203m____/   \__,_|_.__/  \__,_|\__,_|\___/|_|   "
-    echo -e "\e[38;5;202m                         __/ |                                                   "
-    echo -e "\e[38;5;203m                        |___/                                                    "
+    echo -e "\e[35m    ___     _   _     _              ____          _                _            "
+    echo -e "   / _ \   | | | |   | |            / ___|   _   _| |__   _   _  __| | ___  _ __ "
+    echo -e "  | | | |  | |_| | __| | __ _  __ _ \___ \  | | | | '_ \ | | | |/ _  |/ _ \| '__|"
+    echo -e "  | |_| |  |  _  |/ _  |/ _  |/ _  | ___) | | |_| | |_) || |_| | (_| | (_) | |   "
+    echo -e "   \___/   |_| |_|\__,_|\__, |\__,_|____/   \__,_|_.__/  \__,_|\__,_|\___/|_|   "
+    echo -e "                         __/ |                                                   "
+    echo -e "                        |___/                                                    "
     echo -e "\e[0m"
-    echo -e "\e[1;38;5;207m     🚀 AJAK Cyberacademy | WordPress Recon Tool"
-    echo -e "\e[1;38;5;213m     📝 Author: Akash.P"
+    echo -e "\e[1;35m 🚀 AJAK Cyberacademy | WordPress Recon Tool"
+    echo -e " 📝 Author: Akash.P\e[0m"
     echo
 }
 
-# Improved WP Version Detection
+# Detect WP Version
 wp_version_detect() {
     local url="$1"
     url=$(echo "$url" | sed 's:/*$::')
 
-    # Try 1: Meta generator
-    version=$(curl -s -L "$url" | grep -oP '(?<=<meta name="generator" content="WordPress )[^"]+')
-    if [ -n "$version" ]; then
-        echo "WordPress $version (from meta generator tag)"
+    # Meta generator
+    version=$(curl -sL "$url" | grep -oE 'WordPress [0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 | awk '{print $2}')
+    if [[ -n "$version" ]]; then
+        echo "WordPress $version (from meta generator)"
         return
     fi
 
-    # Try 2: Asset version string
-    version=$(curl -s -L "$url" | grep -oP 'ver=[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 | sed 's/ver=//')
-    if [ -n "$version" ]; then
-        echo "WordPress $version (from asset version string)"
+    # Asset version string
+    version=$(curl -sL "$url" | grep -oE 'ver=[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 | cut -d= -f2)
+    if [[ -n "$version" ]]; then
+        echo "WordPress $version (from assets)"
         return
     fi
 
-    # Try 3: RSS feed
-    version=$(curl -s -L "$url/feed/" | grep -oP '<generator>https?://wordpress.org/\?v=[^<]+' | sed 's/.*v=//')
-    if [ -n "$version" ]; then
+    # RSS feed
+    version=$(curl -sL "$url/feed/" | grep -oE '\?v=[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 | cut -d= -f2)
+    if [[ -n "$version" ]]; then
         echo "WordPress $version (from RSS feed)"
         return
     fi
 
-    # Try 4: readme.html
-    version=$(curl -s -L "$url/readme.html" | grep -oP 'Version [0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 | awk '{print $2}')
-    if [ -n "$version" ]; then
+    # readme.html
+    version=$(curl -sL "$url/readme.html" | grep -oE 'Version [0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 | awk '{print $2}')
+    if [[ -n "$version" ]]; then
         echo "WordPress $version (from readme.html)"
         return
     fi
@@ -68,141 +68,60 @@ banner_grab() {
 wp_detect() {
     read -p "Enter target domain: " target
     echo -e "\n[+] Scanning for WordPress installations..."
-    subfinder -d "$target" -silent | \
-    xargs -P10 -I{} bash -c 'curl -s -L "http://{}" | grep -qi "wp-content" && echo "[+] WordPress: http://{}"'
+    subfinder -d "$target" -silent | while read -r sub; do
+        if curl -s -L "http://$sub" | grep -qi "wp-content"; then
+            echo "[+] WordPress: http://$sub"
+        fi
+    done
 }
 
-# Enumerate plugins & versions
+# Enumerate plugins
 wp_plugins() {
     read -p "Enter target domain: " target
     echo -e "\n[+] Enumerating WordPress plugins..."
-    subfinder -d "$target" -silent | \
-    xargs -P10 -I{} bash -c '
-    html=$(curl -s -L "http://{}")
-    plugins=$(echo "$html" | grep -oP "wp-content/plugins/[^/]+")
-    if [ -n "$plugins" ]; then
-        while read -r plugin; do
-            version=$(echo "$html" | grep -oP "$plugin[^\" ]*" | grep -oP "ver=[0-9\.]+" | head -n1 | sed "s/ver=//")
-            echo "{\"domain\": \"{}\", \"plugin\": \"$plugin\", \"version\": \"${version:-unknown}\"}"
-        done <<< "$plugins"
-    fi
-    ' | jq -s .
+    subfinder -d "$target" -silent | while read -r sub; do
+        html=$(curl -s -L "http://$sub")
+        echo "$html" | grep -oE "wp-content/plugins/[^/]+" | sort -u | while read -r plugin; do
+            version=$(echo "$html" | grep -oE "$plugin[^\" ]*" | grep -oE "ver=[0-9\.]+" | head -n1 | cut -d= -f2)
+            echo "{\"domain\": \"$sub\", \"plugin\": \"$plugin\", \"version\": \"${version:-unknown}\"}"
+        done
+    done | jq -s .
 }
 
-# Enumerate themes & versions
+# Enumerate themes
 wp_themes() {
     read -p "Enter target domain: " target
     echo -e "\n[+] Enumerating WordPress themes..."
-    subfinder -d "$target" -silent | \
-    xargs -P10 -I{} bash -c '
-    html=$(curl -s -L "http://{}")
-    themes=$(echo "$html" | grep -oP "wp-content/themes/[^/]+")
-    if [ -n "$themes" ]; then
-        while read -r theme; do
-            version=$(echo "$html" | grep -oP "$theme[^\" ]*" | grep -oP "ver=[0-9\.]+" | head -n1 | sed "s/ver=//")
-            echo "{\"domain\": \"{}\", \"theme\": \"$theme\", \"version\": \"${version:-unknown}\"}"
-        done <<< "$themes"
-    fi
-    ' | jq -s .
+    subfinder -d "$target" -silent | while read -r sub; do
+        html=$(curl -s -L "http://$sub")
+        echo "$html" | grep -oE "wp-content/themes/[^/]+" | sort -u | while read -r theme; do
+            version=$(echo "$html" | grep -oE "$theme[^\" ]*" | grep -oE "ver=[0-9\.]+" | head -n1 | cut -d= -f2)
+            echo "{\"domain\": \"$sub\", \"theme\": \"$theme\", \"version\": \"${version:-unknown}\"}"
+        done
+    done | jq -s .
 }
 
-# Check sensitive WP directories
+# Check sensitive dirs
 check_sensitive_dirs() {
-    read -p "Enter target URL (with https/http): " TARGET
+    read -p "Enter target URL (with http/https): " TARGET
     TARGET=$(echo "$TARGET" | sed 's:/*$::')
     DIRS=(
-        "/wp-admin.php/"
-        "/wp-config.php/"
+        "/wp-admin/"
+        "/wp-config.php"
         "/wp-content/uploads/"
-        "/wp-load/"
-        "/wp-signup.php/"
         "/wp-json/"
-        "/wp-includes/"
-        "/index.php/"
-        "/wp-login.php/"
-        "/wp-links-opml.php/"
-        "/wp-activate.php/"
-        "/wp-blog-header.php/"
-        "/wp-cron.php/"
-        "/wp-links.php/"
-        "/wp-mail.php/"
-        "/xmlrpc.php/"
-        "/wp-settings.php/"
-        "/wp-trackback.php/"
-        "/wp-signup.php/"
-        "/wp-json/wp/v2/users/"
-        "/wp-json/wp/v2/plugins/"
-        "/wp-json/wp/v2/themes/"
-        "/wp-json/wp/v2/comments/"
+        "/xmlrpc.php"
+        "/wp-login.php"
     )
     echo -e "\n[+] Checking sensitive directories..."
-    RESULTS="["
+    results=()
     for DIR in "${DIRS[@]}"; do
-        STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "$TARGET$DIR")
-        if [ "$STATUS" == "200" ]; then
-            RESULTS+="{\"path\": \"$DIR\", \"status\": 200},"
+        status=$(curl -sk -o /dev/null -w "%{http_code}" "$TARGET$DIR")
+        if [[ "$status" == "200" ]]; then
+            results+=("{\"path\": \"$DIR\", \"status\": 200}")
         fi
     done
-    RESULTS=${RESULTS%,}
-    RESULTS+="]"
-    echo "$RESULTS" | jq .
-}
-
-# Run All
-run_all() {
-    read -p "Enter main URL (for banner & dirs check): " main_url
-    read -p "Enter target domain (for subfinder scans): " target_domain
-
-    echo -e "\n========== WP VERSION BANNER =========="
-    wp_version_detect "$main_url"
-
-    echo -e "\n========== WP DETECTION =========="
-    subfinder -d "$target_domain" -silent | \
-    xargs -P10 -I{} bash -c 'curl -s -L "http://{}" | grep -qi "wp-content" && echo "[+] WordPress: http://{}"'
-
-    echo -e "\n========== WP PLUGINS =========="
-    wp_plugins <<< "$target_domain"
-
-    echo -e "\n========== WP THEMES =========="
-    wp_themes <<< "$target_domain"
-
-    echo -e "\n========== SENSITIVE DIRS =========="
-    TARGET=$(echo "$main_url" | sed 's:/*$::')
-    DIRS=(
-        "/wp-admin.php/"
-        "/wp-config.php/"
-        "/wp-content/uploads/"
-        "/wp-load/"
-        "/wp-signup.php/"
-        "/wp-json/"
-        "/wp-includes/"
-        "/index.php/"
-        "/wp-login.php/"
-        "/wp-links-opml.php/"
-        "/wp-activate.php/"
-        "/wp-blog-header.php/"
-        "/wp-cron.php/"
-        "/wp-links.php/"
-        "/wp-mail.php/"
-        "/xmlrpc.php/"
-        "/wp-settings.php/"
-        "/wp-trackback.php/"
-        "/wp-signup.php/"
-        "/wp-json/wp/v2/users/"
-        "/wp-json/wp/v2/plugins/"
-        "/wp-json/wp/v2/themes/"
-        "/wp-json/wp/v2/comments/"
-    )
-    RESULTS="["
-    for DIR in "${DIRS[@]}"; do
-        STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "$TARGET$DIR")
-        if [ "$STATUS" == "200" ]; then
-            RESULTS+="{\"path\": \"$DIR\", \"status\": 200},"
-        fi
-    done
-    RESULTS=${RESULTS%,}
-    RESULTS+="]"
-    echo "$RESULTS" | jq .
+    printf "[%s]\n" "$(IFS=,; echo "${results[*]}")" | jq .
 }
 
 # Menu
@@ -213,8 +132,7 @@ menu() {
     echo "3) Enumerate Plugins & Versions"
     echo "4) Enumerate Themes & Versions"
     echo "5) Check Sensitive WP Directories"
-    echo "6) Run All Above"
-    echo "7) Exit"
+    echo "6) Exit"
     read -p "Select an option: " choice
 
     case $choice in
@@ -223,8 +141,7 @@ menu() {
         3) wp_plugins ;;
         4) wp_themes ;;
         5) check_sensitive_dirs ;;
-        6) run_all ;;
-        7) exit 0 ;;
+        6) exit 0 ;;
         *) echo "Invalid choice" ;;
     esac
 }
